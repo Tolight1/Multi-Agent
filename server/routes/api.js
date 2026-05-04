@@ -19,6 +19,23 @@ function createRouter(orchestrator, pdfService) {
     const outputDir = path.resolve(config.outputDir || './output', jobId);
     fs.mkdirSync(outputDir, { recursive: true });
 
+    jobs.set(jobId, {
+      topic,
+      docType,
+      outputDir,
+      status: 'created',
+      createdAt: new Date(),
+    });
+
+    res.json({ jobId });
+  });
+
+  router.get('/stream/:jobId', async (req, res) => {
+    const job = jobs.get(req.params.jobId);
+    if (!job) return res.status(404).end();
+
+    job.status = 'running';
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -30,61 +47,60 @@ function createRouter(orchestrator, pdfService) {
       }
     };
 
+    req.on('close', () => {
+      job.status = 'cancelled';
+    });
+
     try {
-      const result = await orchestrator.generate(topic, docType, (event) => {
+      const result = await orchestrator.generate(job.topic, job.docType, (event) => {
         sendEvent('phase', event);
       });
 
+      if (job.status === 'cancelled') return res.end();
+
       // Save markdown
-      const mdPath = path.join(outputDir, 'document.md');
+      const mdPath = path.join(job.outputDir, 'document.md');
       fs.writeFileSync(mdPath, result.finalDocument, 'utf-8');
 
       // Generate PDF
       sendEvent('phase', { phase: 'pdf', message: 'Generating PDF...' });
-      const pdfPath = path.join(outputDir, 'document.pdf');
+      const pdfPath = path.join(job.outputDir, 'document.pdf');
       await pdfService.generate(result.finalDocument, pdfPath);
       sendEvent('phase', { phase: 'pdf', message: 'PDF ready' });
 
-      jobs.set(jobId, {
-        topic,
-        docType,
-        pdfPath: `/api/download/${jobId}`,
-        markdownUrl: `/api/download/${jobId}/markdown`,
-        createdAt: new Date(),
-      });
+      job.status = 'completed';
 
       sendEvent('complete', {
-        jobId,
-        downloadUrl: `/api/download/${jobId}`,
-        markdownUrl: `/api/download/${jobId}/markdown`,
-        topic,
+        jobId: req.params.jobId,
+        downloadUrl: `/api/download/${req.params.jobId}`,
+        markdownUrl: `/api/download/${req.params.jobId}/markdown`,
+        topic: job.topic,
         score: result.review?.overallScore,
         sections: result.outline?.length,
       });
     } catch (err) {
       sendEvent('error', { message: err.message });
+      job.status = 'error';
     } finally {
       res.end();
     }
   });
 
   router.get('/download/:jobId', (req, res) => {
-    const jobId = req.params.jobId;
-    const filePath = path.resolve(config.outputDir || './output', jobId, 'document.pdf');
+    const filePath = path.resolve(config.outputDir || './output', req.params.jobId, 'document.pdf');
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
     res.download(filePath, 'document.pdf');
   });
 
   router.get('/download/:jobId/markdown', (req, res) => {
-    const jobId = req.params.jobId;
-    const filePath = path.resolve(config.outputDir || './output', jobId, 'document.md');
+    const filePath = path.resolve(config.outputDir || './output', req.params.jobId, 'document.md');
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
     res.download(filePath, 'document.md');
   });
 
   router.get('/jobs', (req, res) => {
     const jobList = Array.from(jobs.entries()).map(([id, job]) => ({
-      id, topic: job.topic, docType: job.docType, createdAt: job.createdAt,
+      id, topic: job.topic, docType: job.docType, status: job.status, createdAt: job.createdAt,
     }));
     res.json(jobList);
   });

@@ -1,5 +1,5 @@
 let currentJob = null;
-let eventStream = null;
+let eventSource = null;
 
 function startGeneration() {
   const topic = document.getElementById('topic').value.trim();
@@ -11,6 +11,8 @@ function startGeneration() {
   }
 
   currentJob = null;
+  if (eventSource) { eventSource.close(); eventSource = null; }
+
   document.getElementById('input-section').style.display = 'none';
   document.getElementById('progress-section').style.display = 'block';
   document.getElementById('result-section').style.display = 'none';
@@ -27,57 +29,47 @@ function startGeneration() {
   });
   setProgress(0);
 
+  // Step 1: Create job
   fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, docType }),
-  }).then(response => {
-    if (!response.ok) throw new Error('Server error: ' + response.status);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let lastEvent = 'message';
+  })
+    .then(res => {
+      if (!res.ok) throw new Error('Server error: ' + res.status);
+      return res.json();
+    })
+    .then(data => {
+      // Step 2: Connect to SSE stream
+      eventSource = new EventSource(`/api/stream/${data.jobId}`);
 
-    function readChunk() {
-      reader.read().then(({ done, value }) => {
-        if (done) return;
-        buffer += decoder.decode(value, { stream: true });
+      eventSource.addEventListener('phase', e => {
+        const data = JSON.parse(e.data);
+        updateAgent(data.phase, data.message, data.data);
+      });
 
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      eventSource.addEventListener('complete', e => {
+        const data = JSON.parse(e.data);
+        currentJob = data;
+        showResult(data);
+        eventSource.close();
+      });
 
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            lastEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              handleEvent(lastEvent, data);
-            } catch { /* skip malformed JSON */ }
+      eventSource.addEventListener('error', e => {
+        // EventSource will also fire 'error' when the connection closes normally
+        // Only show error if we haven't completed
+        if (!currentJob && eventSource) {
+          try {
+            const data = e.data ? JSON.parse(e.data) : null;
+            showError(data?.message || 'Connection lost');
+          } catch {
+            showError('Connection lost');
           }
         }
-
-        readChunk();
-      }).catch(err => showError(err.message));
-    }
-
-    readChunk();
-  }).catch(err => showError(err.message));
-}
-
-function handleEvent(event, data) {
-  switch (event) {
-    case 'phase':
-      updateAgent(data.phase, data.message, data.data);
-      break;
-    case 'complete':
-      currentJob = data;
-      showResult(data);
-      break;
-    case 'error':
-      showError(data.message);
-      break;
-  }
+        eventSource.close();
+      });
+    })
+    .catch(err => showError(err.message));
 }
 
 function updateAgent(phase, message, extra) {
@@ -159,6 +151,7 @@ function showError(message) {
 }
 
 function resetForm() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('input-section').style.display = 'block';
   document.getElementById('progress-section').style.display = 'none';
   document.getElementById('result-section').style.display = 'none';
