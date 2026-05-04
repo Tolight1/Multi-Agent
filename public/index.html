@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Agent Document Generator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Multi-Agent Document Generator</h1>
+      <p class="subtitle">AI-powered document generation with multi-agent collaboration</p>
+    </header>
+
+    <section id="input-section" class="card">
+      <h2>Create Document</h2>
+      <div class="form-group">
+        <label for="topic">Topic</label>
+        <input type="text" id="topic" placeholder="Enter document topic..." />
+      </div>
+      <div class="form-group">
+        <label for="docType">Document Type</label>
+        <select id="docType">
+          <option value="技术方案">技术方案</option>
+          <option value="产品文档">产品文档</option>
+          <option value="行业分析报告">行业分析报告</option>
+          <option value="研究报告">研究报告</option>
+          <option value="项目提案">项目提案</option>
+        </select>
+      </div>
+      <button id="generate-btn" onclick="startGeneration()">Generate Document</button>
+    </section>
+
+    <section id="progress-section" class="card" style="display:none">
+      <h2>Generation Progress</h2>
+      <div id="agents">
+        <div class="agent" data-agent="research">
+          <div class="agent-header"><span class="agent-icon">&#x1F50D;</span> Research Agent</div>
+          <div class="agent-status pending">Pending</div>
+          <div class="agent-message"></div>
+        </div>
+        <div class="agent" data-agent="outline">
+          <div class="agent-header"><span class="agent-icon">&#x1F4CB;</span> Outline Agent</div>
+          <div class="agent-status pending">Pending</div>
+          <div class="agent-message"></div>
+        </div>
+        <div class="agent" data-agent="writer">
+          <div class="agent-header"><span class="agent-icon">&#x270D;&#xFE0F;</span> Writer Agent</div>
+          <div class="agent-status pending">Pending</div>
+          <div class="agent-message"></div>
+        </div>
+        <div class="agent" data-agent="reviewer">
+          <div class="agent-header"><span class="agent-icon">&#x2705;</span> Review Agent</div>
+          <div class="agent-status pending">Pending</div>
+          <div class="agent-message"></div>
+        </div>
+        <div class="agent" data-agent="pdf">
+          <div class="agent-header"><span class="agent-icon">&#x1F4C4;</span> PDF Generation</div>
+          <div class="agent-status pending">Pending</div>
+          <div class="agent-message"></div>
+        </div>
+      </div>
+      <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+      </div>
+    </section>
+
+    <section id="result-section" class="card" style="display:none">
+      <h2>Document Ready</h2>
+      <div id="result-meta"></div>
+      <div class="actions">
+        <button class="btn-primary" onclick="downloadPDF()">Download PDF</button>
+        <button class="btn-secondary" onclick="downloadMarkdown()">Download Markdown</button>
+        <button class="btn-secondary" onclick="resetForm()">Create New</button>
+      </div>
+    </section>
+
+    <section id="error-section" class="card error" style="display:none">
+      <h2>Error</h2>
+      <p id="error-message"></p>
+      <button class="btn-secondary" onclick="resetForm()">Try Again</button>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
